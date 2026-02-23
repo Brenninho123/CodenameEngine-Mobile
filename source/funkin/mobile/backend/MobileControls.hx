@@ -1,32 +1,36 @@
-package mobile.backend;
+package funkin.mobile.backend;
 
 import flixel.FlxG;
 import flixel.group.FlxGroup;
-import flixel.ui.FlxButton;
 import flixel.util.FlxColor;
 import flixel.math.FlxPoint;
-import mobile.backend.TouchPad;
-import mobile.backend.MobileConfig;
+import funkin.mobile.backend.TouchPad;
+import funkin.mobile.backend.MobileConfig;
+import funkin.mobile.backend.MobileUtils;
 
 class MobileControls extends FlxGroup
 {
     public static var instance:MobileControls;
     
     public var touchPad:TouchPad;
-    public var hitbox:TouchPad; // Hitbox style controls
+    public var hitbox:TouchPad;
     
-    private var controlMode:String = "PAD"; // PAD, HITBOX, BOTH
+    private var controlMode:String = "PAD";
+    private var canUseTouch:Bool = false;
     
     public function new()
     {
         super();
         instance = this;
         
-        // Carrega configuração salva
-        loadConfig();
+        if (!FlxG.onMobile) return;
         
-        // Cria controles baseado no modo
+        canUseTouch = true;
+        loadConfig();
         createControls();
+        
+        // Verifica permissões na inicialização
+        MobileUtils.checkPermissions();
     }
     
     private function loadConfig():Void
@@ -38,7 +42,7 @@ class MobileControls extends FlxGroup
     
     private function createControls():Void
     {
-        // Remove controles existentes
+        // Limpa controles existentes
         if (touchPad != null) remove(touchPad);
         if (hitbox != null) remove(hitbox);
         
@@ -59,12 +63,13 @@ class MobileControls extends FlxGroup
                 add(hitbox);
         }
         
-        // Ajusta posição baseado nas configurações
         updateControlsPosition();
     }
     
-    private function updateControlsPosition():Void
+    public function updateControlsPosition():Void
     {
+        if (!canUseTouch) return;
+        
         var padX = MobileConfig.getPadX();
         var padY = MobileConfig.getPadY();
         var padSize = MobileConfig.getPadSize();
@@ -94,41 +99,65 @@ class MobileControls extends FlxGroup
         createControls();
     }
     
-    public function updateSettings():Void
+    public function getControlMode():String
     {
-        updateControlsPosition();
+        return controlMode;
     }
     
     override public function update(elapsed:Float):Void
     {
         super.update(elapsed);
         
-        // Atualiza inputs
+        if (!canUseTouch) return;
+        
+        // Atualiza inputs para o jogo
         updateInputs();
     }
     
     private function updateInputs():Void
     {
-        // Mapeia toques para ações do jogo
+        // Reseta inputs
+        resetInputs();
+        
+        // Pega inputs do touchPad
         if (touchPad != null)
         {
-            FlxG.save.data.padLeft = touchPad.buttonLeft.pressed;
-            FlxG.save.data.padDown = touchPad.buttonDown.pressed;
-            FlxG.save.data.padUp = touchPad.buttonUp.pressed;
-            FlxG.save.data.padRight = touchPad.buttonRight.pressed;
+            // Direcionais
+            if (touchPad.buttonLeft != null) FlxG.save.data.padLeft = touchPad.buttonLeft.pressed;
+            if (touchPad.buttonDown != null) FlxG.save.data.padDown = touchPad.buttonDown.pressed;
+            if (touchPad.buttonUp != null) FlxG.save.data.padUp = touchPad.buttonUp.pressed;
+            if (touchPad.buttonRight != null) FlxG.save.data.padRight = touchPad.buttonRight.pressed;
             
-            FlxG.save.data.padA = touchPad.buttonA.pressed;
-            FlxG.save.data.padB = touchPad.buttonB.pressed;
-            FlxG.save.data.padX = touchPad.buttonX.pressed;
-            FlxG.save.data.padY = touchPad.buttonY.pressed;
+            // Botões de ação
+            if (touchPad.buttonA != null) FlxG.save.data.padA = touchPad.buttonA.pressed;
+            if (touchPad.buttonB != null) FlxG.save.data.padB = touchPad.buttonB.pressed;
+            if (touchPad.buttonX != null) FlxG.save.data.padX = touchPad.buttonX.pressed;
+            if (touchPad.buttonY != null) FlxG.save.data.padY = touchPad.buttonY.pressed;
         }
         
+        // Pega inputs do hitbox
         if (hitbox != null)
         {
-            FlxG.save.data.hitboxLeft = hitbox.buttonLeft.pressed;
-            FlxG.save.data.hitboxDown = hitbox.buttonDown.pressed;
-            FlxG.save.data.hitboxUp = hitbox.buttonUp.pressed;
-            FlxG.save.data.hitboxRight = hitbox.buttonRight.pressed;
+            if (hitbox.buttonLeft != null) FlxG.save.data.hitboxLeft = hitbox.buttonLeft.pressed;
+            if (hitbox.buttonDown != null) FlxG.save.data.hitboxDown = hitbox.buttonDown.pressed;
+            if (hitbox.buttonUp != null) FlxG.save.data.hitboxUp = hitbox.buttonUp.pressed;
+            if (hitbox.buttonRight != null) FlxG.save.data.hitboxRight = hitbox.buttonRight.pressed;
         }
     }
-        }
+    
+    private function resetInputs():Void
+    {
+        FlxG.save.data.padLeft = false;
+        FlxG.save.data.padDown = false;
+        FlxG.save.data.padUp = false;
+        FlxG.save.data.padRight = false;
+        FlxG.save.data.padA = false;
+        FlxG.save.data.padB = false;
+        FlxG.save.data.padX = false;
+        FlxG.save.data.padY = false;
+        FlxG.save.data.hitboxLeft = false;
+        FlxG.save.data.hitboxDown = false;
+        FlxG.save.data.hitboxUp = false;
+        FlxG.save.data.hitboxRight = false;
+    }
+}
