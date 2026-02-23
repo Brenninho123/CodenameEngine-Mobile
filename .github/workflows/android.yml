@@ -1,0 +1,252 @@
+name: Android Builds
+
+on:
+  push:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    name: Android Release Build
+    permissions: write-all
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Pulling the new commit
+        uses: actions/checkout@v4
+      
+      - name: Setting up Java (Android SDK requirement)
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '11'
+      
+      - name: Setting up Android SDK
+        uses: android-actions/setup-android@v3
+      
+      - name: Setting up Haxe
+        uses: krdlab/setup-haxe@v2
+        with:
+          haxe-version: 4.3.7
+      
+      - name: Restore existing build cache for faster compilation
+        uses: actions/cache@v4.2.3
+        with:
+          key: cache-build-android-${{ github.sha }}
+          restore-keys: |
+            cache-build-android-
+          path: |
+            .haxelib/
+            export/release/android/haxe/
+            export/release/android/obj/
+            ~/.gradle/caches/
+            ~/.android/build-cache/
+      
+      - name: Configuring environment for Android
+        run: |
+          echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+          echo "JAVA_HOME=$JAVA_HOME_11_X64" >> $GITHUB_ENV
+          echo "HXCPP_COMPILE_CACHE=~/.hxcpp" >> $GITHUB_ENV
+      
+      - name: Installing/Updating libraries
+        run: |
+          haxe -cp commandline -D analyzer-optimize --run Main setup -s --no-vscheck
+          
+          # Instalar bibliotecas adicionais para Android
+          haxelib install hxcpp > /dev/null
+          haxelib install lime
+          haxelib install openfl
+          haxelib install flixel
+          haxelib install flixel-addons
+          haxelib install flixel-ui
+          haxelib install hscript
+          haxelib install actuate
+          
+          # Configurar Android SDK no Lime
+          haxelib run lime setup android -y
+          haxelib run lime config ANDROID_SDK $ANDROID_SDK_ROOT
+      
+      - name: Building the game (Android APK)
+        run: |
+          # Build release APK
+          haxelib run lime build android -release
+          
+          # Renomear APK para incluir informações de versão
+          VERSION=$(grep 'version' project.xml | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+' | head -1)
+          if [ -f "export/release/android/bin/bin/app-release.apk" ]; then
+            mv export/release/android/bin/bin/app-release.apk "export/release/android/bin/CodenameEngine-v$VERSION-release.apk"
+          elif [ -f "export/release/android/bin/app-release.apk" ]; then
+            mv export/release/android/bin/app-release.apk "export/release/android/bin/CodenameEngine-v$VERSION-release.apk"
+          elif [ -f "export/release/android/bin/bin/app.apk" ]; then
+            mv export/release/android/bin/bin/app.apk "export/release/android/bin/CodenameEngine-v$VERSION-release.apk"
+          fi
+      
+      - name: Uploading artifact (APK only)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Codename Engine Android (APK Only)
+          path: export/release/android/bin/*.apk
+      
+      - name: Uploading artifact (entire Android build)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Codename Engine Android (Full Build)
+          path: |
+            export/release/android/bin/
+            !export/release/android/bin/*.apk
+      
+      - name: Upload to Release (if triggered by release)
+        if: github.event_name == 'release'
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: export/release/android/bin/*.apk
+          tag: ${{ github.ref }}
+          file_glob: true
+          overwrite: true
+          body: "Android APK for Codename Engine"
+      
+      - name: Clearing old cache
+        continue-on-error: true
+        run: |
+          # Manter apenas os últimos 5 caches
+          gh extension install actions/gh-actions-cache
+          gh actions-cache list --limit 100 --sort created-at --order desc | grep "cache-build-android-" | tail -n +6 | while read line
+          do
+            CACHE_KEY=$(echo $line | awk '{print $1}')
+            echo "Deleting old cache: $CACHE_KEY"
+            gh actions-cache delete $CACHE_KEY --confirm
+          done
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  debug_build:
+    name: Android Debug Build
+    permissions: write-all
+    runs-on: ubuntu-latest
+    needs: build
+    
+    steps:
+      - name: Pulling the new commit
+        uses: actions/checkout@v4
+      
+      - name: Setting up Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '11'
+      
+      - name: Setting up Android SDK
+        uses: android-actions/setup-android@v3
+      
+      - name: Setting up Haxe
+        uses: krdlab/setup-haxe@v2
+        with:
+          haxe-version: 4.3.7
+      
+      - name: Restore existing build cache for faster compilation
+        uses: actions/cache@v4.2.3
+        with:
+          key: cache-build-android-debug-${{ github.sha }}
+          restore-keys: |
+            cache-build-android-debug-
+          path: |
+            .haxelib/
+            export/debug/android/haxe/
+            export/debug/android/obj/
+            ~/.gradle/caches/
+            ~/.android/build-cache/
+      
+      - name: Configuring environment for Android
+        run: |
+          echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+          echo "JAVA_HOME=$JAVA_HOME_11_X64" >> $GITHUB_ENV
+          echo "HXCPP_COMPILE_CACHE=~/.hxcpp" >> $GITHUB_ENV
+      
+      - name: Installing/Updating libraries
+        run: |
+          haxe -cp commandline -D analyzer-optimize --run Main setup -s --no-vscheck
+          haxelib run lime setup android -y
+      
+      - name: Building the game (Android Debug APK)
+        run: |
+          # Build debug APK
+          haxelib run lime build android -debug
+          
+          # Renomear APK debug
+          VERSION=$(grep 'version' project.xml | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+' | head -1)
+          if [ -f "export/debug/android/bin/bin/app-debug.apk" ]; then
+            mv export/debug/android/bin/bin/app-debug.apk "export/debug/android/bin/CodenameEngine-v$VERSION-debug.apk"
+          elif [ -f "export/debug/android/bin/app-debug.apk" ]; then
+            mv export/debug/android/bin/app-debug.apk "export/debug/android/bin/CodenameEngine-v$VERSION-debug.apk"
+          fi
+      
+      - name: Uploading artifact (Debug APK)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Codename Engine Android Debug
+          path: export/debug/android/bin/*.apk
+      
+      - name: Clearing old debug cache
+        continue-on-error: true
+        run: |
+          gh extension install actions/gh-actions-cache
+          gh actions-cache list --limit 100 --sort created-at --order desc | grep "cache-build-android-debug-" | tail -n +6 | while read line
+          do
+            CACHE_KEY=$(echo $line | awk '{print $1}')
+            echo "Deleting old cache: $CACHE_KEY"
+            gh actions-cache delete $CACHE_KEY --confirm
+          done
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build_arm64:
+    name: Android ARM64 Build
+    permissions: write-all
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release' # Build only for releases
+    
+    steps:
+      - name: Pulling the new commit
+        uses: actions/checkout@v4
+      
+      - name: Setting up Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '11'
+      
+      - name: Setting up Android SDK
+        uses: android-actions/setup-android@v3
+      
+      - name: Setting up Haxe
+        uses: krdlab/setup-haxe@v2
+        with:
+          haxe-version: 4.3.7
+      
+      - name: Installing libraries
+        run: |
+          haxe -cp commandline -D analyzer-optimize --run Main setup -s --no-vscheck
+          haxelib run lime setup android -y
+      
+      - name: Building ARM64 APK
+        run: |
+          # Modificar project.xml temporariamente para ARM64
+          sed -i 's/<architecture name="armv7" if="android" \/>/<!-- <architecture name="armv7" if="android" \/> -->/g' project.xml
+          sed -i 's/<!-- <architecture name="arm64" if="android" \/> -->/<architecture name="arm64" if="android" \/>/g' project.xml
+          
+          haxelib run lime build android -release
+          
+          VERSION=$(grep 'version' project.xml | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+' | head -1)
+          if [ -f "export/release/android/bin/bin/app-release.apk" ]; then
+            mv export/release/android/bin/bin/app-release.apk "export/release/android/bin/CodenameEngine-v$VERSION-arm64-release.apk"
+          fi
+      
+      - name: Upload ARM64 APK to Release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: export/release/android/bin/*-arm64-release.apk
+          tag: ${{ github.ref }}
+          overwrite: true
