@@ -36,6 +36,13 @@ import funkin.backend.week.WeekData;
 import funkin.savedata.FunkinSave;
 import haxe.io.Path;
 
+import funkin.mobile.backend.MobileControls;
+import funkin.mobile.backend.MobileConfig;
+import funkin.mobile.backend.MobileUtils;
+import funkin.mobile.backend.MobileIcons;
+import flixel.ui.FlxVirtualPad;
+import flixel.input.touch.FlxTouch;
+
 using StringTools;
 
 @:access(flixel.text.FlxText.FlxTextFormatRange)
